@@ -1,2 +1,2 @@
 # voltage
-Analysis of voltage imaging data
+Analysis of voltage imaging recordings from single neurons
