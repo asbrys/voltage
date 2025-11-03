@@ -1,7 +1,6 @@
 """"
 Functions to streamline analysis.
-Need to improve this to better manage memory issues.
-
+Need to improve this to better manage memory issues....
 """
 from  scripts import dfFunc as dF
 import numpy as np
@@ -32,37 +31,47 @@ def filterTiff(Stack, Info):
 
 def getActivity(fData, Info, Inv = True):
     """
-    Normalised activity array & extract episodes above threshold.
-    Perform background correction by removing activity epochs with summed value that 
-    fall below a threshold based on the non-cell region. 
+    *** Function to extract significant "blobs" of activity from recording ***
+    Does this following:
+    1. Normalises the recording (pixel-wise) based on rolling mean/std
+    2. Get spatio-temporal activity episodes > threshold
+    3. Also calculate summed intensity of each episode
+    (time consuming... need to optimise or remove in future)
+    4. Do a background correction: remove blobs of activity < a threshold set by non-cell areas
+    
+    Return:
+    1. Normalised + thresholded recording (ie, 0 if < Z-score threshold)
+    2. Labelled data (dict): {'labArray': recording with label number of each significant blob
+                              'nabels': number of significant blobs
+                              'aucs': summed intensity of each significant blob}
+    3. Labelled data (as above) but just for non-cell regions (?? remove this)
+    4. Pixel indices corresponding to cell locations (?? remove this)
+
     """
 
-    # Get normalised activity array
-    normTiff = (fData['filtTiff'] - fData['rMean']) / fData['rStd']
+    normTiff = (fData['filtTiff'] - fData['rMean']) / fData['rStd']             # Normalise recording
     del fData
 
     # Invert depending on indicator & threshold for std (DO THIS AFTER NORMALISATION!)
     if Inv: 
         normTiff = -normTiff
-    normTiff = np.where(normTiff > Info['std'], normTiff, 0)
 
-    # Get continuous activity epochs for all areas
-    contDataAll = dF.getContigData(normTiff, Info)
+    normTiff = np.where(normTiff > Info['std'], normTiff, 0)                    # Threshold recording
 
-    # Get continuous activity epochs for non-cell areas
+    contDataAll = dF.getContigData(normTiff, Info)                              # Get blob of activity > threshold    
+
+    # Get blobs of activity in non-cell regions (for background correction)
     normTiffNonCell = dF.cellNon(normTiff, np.where(Info['meanImage'] > Info['cutoff']))
     contDataNonCell = dF.getContigData(normTiffNonCell, Info)
     del normTiffNonCell, contDataNonCell['labArray']
 
-    # Set threshold for Auc activity epoch cutoff
-    try:    
+    try:                                                                        # Set percentile threshold for bg correction    
         UPPER = np.percentile(contDataNonCell['aucs'], Info['perc'])
-    except: # Get all activity if something funny going on
+    except:                                                             
         UPPER = -1e9
 
-    # Remove continuous activity episodes with AUC < cutoff
     normTiff = dF.remBaseActivity(normTiff, contDataAll['labArray'],\
-                                  contDataAll['aucs'], UPPER)
+                                  contDataAll['aucs'], UPPER)                   # Background correction
     
     print('{} and {} continuous episodes in total and non-cell regions\
           '.format(contDataAll['nLabels'], contDataNonCell['nLabels']))
