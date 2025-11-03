@@ -5,3 +5,4 @@ activityMaps/*.mp4
 getHotspots.*
 scripts/syn*.py
 scripts/clust*.py
+scripts/e*.py
