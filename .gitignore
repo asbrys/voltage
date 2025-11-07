@@ -3,6 +3,7 @@ data/*.pkl
 background/*.png
 activityMaps/*.mp4
 scripts/e*.py
+scripts/clustSigFunc.py
 synFigs/*.mp4
 synFigs/*.png
 video/*.tif
