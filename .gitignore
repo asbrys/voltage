@@ -6,3 +6,7 @@ getHotspots.*
 scripts/syn*.py
 scripts/clust*.py
 scripts/e*.py
+synFigs/*.mp4
+synFigs/*.png
+video/*.tif
+
