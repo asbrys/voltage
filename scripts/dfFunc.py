@@ -9,9 +9,13 @@ Contains:
 
 """
 
-import numpy as np, tifffile, imagecodecs, copy, scipy, pandas as pd, ray, cupy as cp, bottleneck as bn
+import numpy as np, tifffile, imagecodecs, copy, scipy, pandas as pd, ray, bottleneck as bn
 from scipy.ndimage import label, generate_binary_structure
-from cupyx.scipy import ndimage as cuNd
+try:
+    import cupy as cp
+    from cupyx.scipy import ndimage as cuNd
+except:
+    pass
 
 
 

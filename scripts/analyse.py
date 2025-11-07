@@ -29,10 +29,11 @@ def filterTiff(Stack, Info):
             'rMean': rMean, 'rStd': rStd}
 
 
-def getActivity(fData, Info, Inv = True):
+def getActivity(fData, Info, Inv = True, bgCorrect = True):
     """
     *** Function to extract significant "blobs" of activity from recording ***
-    Does this following:
+
+    Does the following:
     1. Normalises the recording (pixel-wise) based on rolling mean/std
     2. Get spatio-temporal activity episodes > threshold
     3. Also calculate summed intensity of each episode
@@ -49,35 +50,47 @@ def getActivity(fData, Info, Inv = True):
 
     """
 
-    normTiff = (fData['filtTiff'] - fData['rMean']) / fData['rStd']             # Normalise recording
+    normTiff = (fData['filtTiff'] - fData['rMean']) / fData['rStd']                 # Normalise recording
     del fData
 
     # Invert depending on indicator & threshold for std (DO THIS AFTER NORMALISATION!)
     if Inv: 
         normTiff = -normTiff
 
-    normTiff = np.where(normTiff > Info['std'], normTiff, 0)                    # Threshold recording
+    normTiff = np.where(normTiff > Info['std'], normTiff, 0)                        # Threshold recording
 
-    contDataAll = dF.getContigData(normTiff, Info)                              # Get blob of activity > threshold    
+    if bgCorrect:
 
-    # Get blobs of activity in non-cell regions (for background correction)
-    normTiffNonCell = dF.cellNon(normTiff, np.where(Info['meanImage'] > Info['cutoff']))
-    contDataNonCell = dF.getContigData(normTiffNonCell, Info)
-    del normTiffNonCell, contDataNonCell['labArray']
+        # Get locations of blobs of activity > threshold, and their summed activity
+        contDataAll = dF.getContigData(normTiff, Info)                                 
 
-    try:                                                                        # Set percentile threshold for bg correction    
-        UPPER = np.percentile(contDataNonCell['aucs'], Info['perc'])
-    except:                                                             
-        UPPER = -1e9
+        # Get blobs of activity in non-cell regions (for background correction)
+        normTiffNonCell = dF.cellNon(normTiff, np.where(Info['meanImage'] > Info['cutoff']))
+        contDataNonCell = dF.getContigData(normTiffNonCell, Info)
+        del normTiffNonCell, contDataNonCell['labArray']
 
-    normTiff = dF.remBaseActivity(normTiff, contDataAll['labArray'],\
-                                  contDataAll['aucs'], UPPER)                   # Background correction
+        try:                                                                        # Set percentile threshold for bg correction    
+            UPPER = np.percentile(contDataNonCell['aucs'], Info['perc'])
+            
+        except:                                                             
+            UPPER = -1e9
+
+        normTiff = dF.remBaseActivity(normTiff, contDataAll['labArray'],\
+                                    contDataAll['aucs'], UPPER)                     # Background correction
+        
+        print('{} and {} continuous episodes in total and non-cell regions\
+            '.format(contDataAll['nLabels'], contDataNonCell['nLabels']))
+        
+        return {'threshTiff': normTiff, 
+                'labDataAll': contDataAll,
+                'labDataNonCell': contDataNonCell,
+                'cellInds': np.where(Info['meanImage'] > Info['cutoff'] )}
     
-    print('{} and {} continuous episodes in total and non-cell regions\
-          '.format(contDataAll['nLabels'], contDataNonCell['nLabels']))
-    
-    return {'threshTiff': normTiff, 
-            'labDataAll': contDataAll,
-            'labDataNonCell': contDataNonCell,
-            'cellInds': np.where(Info['meanImage'] > Info['cutoff'] )}
+    else:
+
+        return {'threshTiff': normTiff, 
+                'labDataAll': None,
+                'labDataNonCell': None,
+                'cellInds': np.where(Info['meanImage'] > Info['cutoff'] )}
+
 
