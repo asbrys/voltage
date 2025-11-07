@@ -2,9 +2,6 @@ scripts/__pycache__/
 data/*.pkl
 background/*.png
 activityMaps/*.mp4
-getHotspots.*
-scripts/syn*.py
-scripts/clust*.py
 scripts/e*.py
 synFigs/*.mp4
 synFigs/*.png
