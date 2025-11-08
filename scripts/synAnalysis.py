@@ -13,14 +13,19 @@ class synClust:
     def __init__(self, dataPath):
         """
         Initiate synaptic analysis class with preprocessed data:
-        1. Load data
+        1. Load data. The input 
         2. Get normalised heatmaps of activity, summed over temporal frames: 
             2D array: M rows x N heatmaps, where M is unfolded 2D pixels (n pixel row x column of recording) 
         3. Get spatial dimensions of recording
         """
-        self.cntData = pkl.load(open(dataPath, 'rb'))                                           # Load data
-        self.actM, self.labAct = sF.getNormEpochs(self.cntData['threshTiff'], BINARY = False)   # Normalised heatmaps of significant activity
-        self.spatialDims = self.cntData['threshTiff'].shape[1:]                                 # Spatial dimensions of recording
+        self.dataPath = dataPath                                                        
+
+        Data = pkl.load(open(dataPath, 'rb'))  
+                                                
+        self.actM, self.labAct = sF.getNormEpochs(Data['threshTiff'], BINARY = False)   # Normalised heatmaps of significant activity
+        self.spatialDims = Data['threshTiff'].shape[1:]                                 # Spatial dimensions of recording
+        self.cellInds = Data['cellInds']                                                # Pixel values of cell (use for bg correction)
+        del Data
     
 
     def getDistance(self, Runs, batchSize, percentile = 10, shufflePlot = False, \
@@ -57,7 +62,7 @@ class synClust:
         """Remove weakly correlated heatmaps from activity matrix and recalculate distances"""
 
         # Get cutoff for background correction
-        self.bgCutoff = sF.bgHmCorrection(self.spatialDims, self.cntData['cellInds'],\
+        self.bgCutoff = sF.bgHmCorrection(self.spatialDims, self.cellInds,\
                                           self.actM, self.sM, Plot = True, Percentile = Percentile)
 
         if Correct:
@@ -86,7 +91,7 @@ class synClust:
         self.rowData = [sF.plotSim(simM, self.sM, CL, rows, cM = self.cM, bnds = bounds) \
                            for CL, simM in zip(plList, sortedSm)]
         
-        self.activityCover = sF.hmActivityCover(self.actM, self.cntData['cellInds'], \
+        self.activityCover = sF.hmActivityCover(self.actM, self.cellInds, \
                                                 self.rowData, Dims = self.spatialDims)
 
 
@@ -135,10 +140,11 @@ class synClust:
         """
         Get movie of concatenated activity associated with each cluster
         """
-
-        sF.getClusterMovies(self.cntData['threshTiff'], self.rowData[Level], self.labAct, \
+        threshRec = pkl.load(open(self.dataPath, 'rb'))['threshTiff']
+        sF.getClusterMovies(threshRec, self.rowData[Level], self.labAct, \
                   Dim = self.spatialDims, Std = Std, SPD = Speed, vBase = vBase, vAlph = vAlph, \
                     fName = fName, Short = Short)
+        del threshRec
 
 
     def getClusterSignificance(self, normaliseHms, Threshold, labelText = True):
