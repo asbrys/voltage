@@ -6,5 +6,6 @@ scripts/e*.py
 scripts/clustSigFunc.py
 synFigs/*.mp4
 synFigs/*.png
+synFigs/*.png
 video/*.tif
 
