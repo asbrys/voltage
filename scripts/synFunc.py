@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt, matplotlib.cm as cm, matplotlib as mpl, ray, sc
 from scipy.ndimage import label, generate_binary_structure
 from scipy.spatial.distance import pdist, cdist
 from math import erf, sqrt
+from collections import defaultdict
 from sklearn.cluster import KMeans
 from sklearn import metrics as skmetrics, mixture
 from scripts import vFunc as vF, clustSigFunc as cSF, dfFunc as dF
@@ -268,7 +269,7 @@ def hmActivityCover(actM, cellInds, rowData, Dims = (32, 128)):
 
 
 #######################################################################################################
-#    3 - Synapse specific plotting functions
+#    3 - Functions for plotting hotspots
 #######################################################################################################
 
 def heatmapCluster(rowData, actMap, Dim=None):
@@ -310,7 +311,7 @@ def heatmapCluster(rowData, actMap, Dim=None):
 
 
 def plotMeanEnsHm(actM, rowData, Inline = False, Dim = (32,128), Abase = 0.2, Save = None, \
-                  Combined = True, colors = False, clusterLabels = None, clusterList = None,\
+                  Combined = True, colors = False, plotClusters = None, clusterLabels = None,\
                   labelText = False, plotDiffuse = False, ALPHA = 0.35, UPSAMPLE = 5, \
                     filt = (2, 2)):
     """
@@ -319,8 +320,8 @@ def plotMeanEnsHm(actM, rowData, Inline = False, Dim = (32,128), Abase = 0.2, Sa
     Input:
     1. 2D matrix of activity episdoes (rows = unfolded pixels, columns = episodes)
     2. 
-    3. clusterlabels: labels of clusters to plot
-    4. clusterList: 
+    3. plotClusters: labels of clusters to plot
+    4. clusterLabels: list of all clusters
     """
         
     # Plotting info
@@ -330,25 +331,26 @@ def plotMeanEnsHm(actM, rowData, Inline = False, Dim = (32,128), Abase = 0.2, Sa
         Save = '_'
 
     # Get lists containing the bins (for actM) of each cluster and their labels
-    if clusterList is not None:
-        assert clusterLabels is not None, 'Need to specify clusterList!'
-        clusterBins = getLabelBins(clusterLabels, clusterList, rowData)
-    else:
+    if clusterLabels is not None:                                             # Plot specified cluster lists
+        assert plotClusters is not None, 'Need to specify clusterLabels!'
+        clusterBins = getLabelBins(plotClusters, clusterLabels, rowData)
+    else:                                                                   # Plot entire hierarchy
         if plotDiffuse: # Include the weakest cluster
             clusterBins = [rowData['sortedBins'][X1:X2] for X1, X2 in \
                            zip(rowData['ensLocSorted'], rowData['ensLocSorted'][1:] + [-1])]
-            clusterLabels = [rowData['bestRow'][rowData['sortedBins'][X1]]\
+            plotClusters = [rowData['bestRow'][rowData['sortedBins'][X1]]\
                             for X1 in rowData['ensLocSorted']]
             
         else:           # Exclude the weakest cluster
             clusterBins = [rowData['sortedBins'][X1:X2] for X1, X2 in \
                            zip(rowData['ensLocSorted'][:-1], rowData['ensLocSorted'][1:])]
-            clusterLabels = [rowData['bestRow'][rowData['sortedBins'][X1]]\
+            plotClusters = [rowData['bestRow'][rowData['sortedBins'][X1]]\
                             for X1 in rowData['ensLocSorted'][:-1]]
         
     if len(clusterBins) < 1:    # If no activity at a certain hierarchy
         return
 
+    # Now combine all activity maps for each cluster and plot
     if Combined:
         
         # For each cluster, get flattened activity episodes and find pixel-wise mean
@@ -390,11 +392,17 @@ def plotMeanEnsHm(actM, rowData, Inline = False, Dim = (32,128), Abase = 0.2, Sa
         # Add number for cluster onto each plotted heatmap
         if labelText:
 
-            assert clusterLabels is not None, 'need labels to plot!'
+            assert plotClusters is not None, 'need labels to plot!'
 
-            nLabels = len(clusterLabels)
+            nLabels = len(plotClusters)
 
-            for I, (clustFrame, text) in enumerate(zip(meanFrames, clusterLabels)):
+            for I, (clustFrame, text) in enumerate(zip(meanFrames, plotClusters)):
+
+                if type(text) is list:                     # Text for joined cluster
+                    text = "+".join(map(str,text))
+                else:                                               # Text for Single cluster
+                    text = str(int(text))
+
                 # Get location to place text
                 (y, x) = np.where(clustFrame[:, :, 3] > 0)
                 y, x = int(np.quantile(y, 0.25)), int(np.quantile(x, 0.2))
@@ -407,7 +415,7 @@ def plotMeanEnsHm(actM, rowData, Inline = False, Dim = (32,128), Abase = 0.2, Sa
                         textColor = (255, 255, 255, 255)
                 else:
                     textColor = (255, 255, 255, 255)
-                bg_fr = cv2.putText(bg_fr, str(int(text)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, \
+                bg_fr = cv2.putText(bg_fr, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, \
                             0.3, textColor, 1, cv2.LINE_AA)
 
         cv2.imwrite('synFigs/hMap_'+Save+'combinedClust.png', bg_fr)
@@ -500,17 +508,36 @@ def overlapFunc(arrays,overlap=True):
     return arrays, mask, allAct
 
 
-def getLabelBins(clusterLabels, clusterList, rowData):
-    """Get the bins for activity maps corresponding to a list of cluster labels"""
+def getLabelBins(plotClusters, clusterList, rowData):
+    """
+    Get the bins for activity maps corresponding to a list of cluster labels
+    Input:
+    1. List of clusters to plot
+    2. List of all clusters
+    Return:
+    1. List of numpy arrays, where arrays contain activity bins for each cluster
+    """
 
     bins = []
 
-    for L in clusterLabels:
-        ROW, COL = getLabelLocation(L, None, clustList=clusterList)[0]
-        rowD = rowData[ROW]
-        clusterBins = [rowD['sortedBins'][X1:X2]\
-            for X1,X2 in zip(rowD['ensLocSorted'][:-1],rowD['ensLocSorted'][1:])][COL]
-        bins.append(clusterBins)
+    for clustNumber in plotClusters:
+
+        if type(clustNumber) == list:                           # Get bins for clusters that are joined together in list
+            joinedCluster = []
+            for subcluster in clustNumber:
+                ROW, COL = getLabelLocation(subcluster, None, clustList = clusterList)[0]
+                rowD = rowData[ROW]
+                clusterBins = [rowD['sortedBins'][X1: X2]\
+                    for X1, X2 in zip(rowD['ensLocSorted'][: -1],rowD['ensLocSorted'][1:])][COL]
+                [joinedCluster.append(C) for C in clusterBins]
+            bins.append(np.asarray(joinedCluster))
+        
+        else:                                                   # Get bins for isolated clusters
+            ROW, COL = getLabelLocation(clustNumber, None, clustList = clusterList)[0]
+            rowD = rowData[ROW]
+            clusterBins = [rowD['sortedBins'][X1: X2]\
+                for X1, X2 in zip(rowD['ensLocSorted'][: -1],rowD['ensLocSorted'][1:])][COL]
+            bins.append(clusterBins)
     
     return bins
 
@@ -1054,7 +1081,7 @@ def testAdjacentClusters(LABEL, clLabels, parentTree, rowData, actM, Thresh = 95
 
 
 def testClusterChildren(LABEL, cM, parentTree, nodes, actM, DEPTH = 21, nData = 100, \
-                        Dots = 1e4, Thresh = 95, norm = True, Dim = (32,128)):
+                        nDots = 1e4, TH = 95, norm = True, Dim = (32,128)):
     """
     This function tests for significance of a cluster's children.
     """
@@ -1062,7 +1089,7 @@ def testClusterChildren(LABEL, cM, parentTree, nodes, actM, DEPTH = 21, nData = 
     labelLocation = getLabelLocation(LABEL, parentTree)
 
     _, sigList = clusterBranchSig(labelLocation, cM, parentTree,nodes, actM, \
-                                  nData = nData, Dots = Dots, Threshold = Thresh, \
+                                  nData = nData, Dots = nDots, Threshold = TH, \
                                   norm = norm, Dim = Dim) # Lowest significant children
     
     discardList = [int(entry) for row in branchingNans(parentTree, labelLocation, extractValues = True) \
@@ -1089,10 +1116,10 @@ def clusterBranchSig(labelLocation, cM, parentTree, nodes, actM, nData = 100, \
     clList = branchingNans(parentTree, labelLocation, extractValues = True) # Get list of subclusters
 
     for LVL in range(len(clList[1:])):                    # Iterate over child rows 
-        for PAIR in range(int(len(clList[1:][LVL])/2)):   # Iterate over double entries in row 
+        for PAIR in range(int(len(clList[1:][LVL]) / 2)):   # Iterate over double entries in row 
 
             level = clList[1:][LVL]    # Redefine rows and entries since we are repopulating w nans
-            child_pairs = np.array_split(level, len(level)/2)[PAIR]
+            child_pairs = np.array_split(level, len(level) / 2)[PAIR]
 
             if np.isnan(child_pairs[0]): 
                 continue  # Move to next cluster if children are NaN (outside depth)
@@ -1100,14 +1127,14 @@ def clusterBranchSig(labelLocation, cM, parentTree, nodes, actM, nData = 100, \
             parent = int(clList[LVL][PAIR])     # Parent from the row above
             
             # TEST SIGNIFICANCE
-            (percentile, _, _), _ = childSig(nodes, cM, actM, parent, nData=nData, \
-                                             Dots=Dots, norm=norm, Dim=Dim)
+            (percentile, _, _), _ = childSig(nodes, cM, actM, parent, nData = nData, \
+                                             Dots = Dots, norm = norm, Dim = Dim)
 
             print('populating')
             if percentile < Threshold:                      # If not significant, populate children as Nan
                 clList = branchingNans(clList, (LVL, PAIR)) # LVL = parent level, PAIR = parent column
 
-    while np.nansum(clList[-1])==0: 
+    while np.nansum(clList[-1]) == 0: 
         clList.pop()    # remove any end rows filled with nans
     
     keepList = np.unique(getClosestParents(clList)).astype(int) # Get unique nearest parent values
@@ -1412,13 +1439,13 @@ def hmOverlap(hm1, hm2):
     """
 
     # Convert heatmap to binary coordinate points
-    points = [getDots(np.nan_to_num(HM/HM), Scale=1) for HM in [hm1, hm2]]
+    points = [getDots(np.nan_to_num(HM / HM), Scale = 1) for HM in [hm1, hm2]]
 
     # shift the points in the 1st heatmap by 1 pixel in each direction to check for adjacency
     sPoints = shiftPoints(points[0])
 
     # Check for any overlap between heatmap 2 and all the shifted points
-    overlap = np.sum([np.sum([np.sum((P == shift).all(axis=1)) for P in points[1]]) for shift in sPoints])
+    overlap = np.sum([np.sum([np.sum((P == shift).all(axis = 1)) for P in points[1]]) for shift in sPoints])
 
     return overlap > 0
 
@@ -1521,6 +1548,174 @@ def clusterSigTest(Labels, rowData, actM, nDots = 1000, Dim = (32, 128), norm = 
     Scores = np.asarray([getSilh(data, labels = label, GPU = True) for data, label in zip(gaussData, Labels)])
 
     return scipy.stats.percentileofscore(Scores, siOrig), Dots, Hms, gaussData, siOrig, Scores
+
+
+def comp2clust(Labels, rowData, actM, nDots = 500, Dim = (32, 128), norm = False):
+    """ 
+    Compare any 2 clusters. Skip formal comparison if 0 overlap.
+    """
+    assert len(Labels) == 2, print("This function only tests 2 labels!")
+
+    labelBins = [getLvlBins(L, rowData, getLevel = False)[1][0] for L in Labels]
+    Hms = getHms(actM, binList = labelBins, norm = norm, Dim = Dim)
+
+    # Return 100 if no heatmap overlap
+    if not hmOverlap(Hms[0], Hms[1]):
+        #print("no overlaps between {} and {}".format(Labels[0], Labels[1]))
+        return 100
+
+    else:
+        combinedHm = Hms[0] + Hms[1]
+
+        SCALE = int(nDots / (np.mean(combinedHm[np.where(combinedHm > 0)]) * len(np.where(combinedHm > 0)[0])))
+
+        Dots = [getDots(Hm, Scale = SCALE) for Hm in [Hms[0], Hms[1], combinedHm]] 
+
+        siOrig = getSilh(Dots[0], c2 = Dots[1], GPU = True)
+
+        gaussParams = getGaussParams(Dots[2])        # Gaussian Parameters of parent
+
+        gaussData = genGauss(gaussParams, 100)       # Surrogate data
+
+        Km = KMeans(n_clusters = 2, n_init = 'auto')        # K means
+
+        remoteKfit = ray.remote(KmFit)
+        Labels = ray.get([remoteKfit.remote(Km, data) for data in gaussData])
+
+        Scores = np.asarray([getSilh(data, labels = label, GPU = True) for \
+            data, label in zip(gaussData, Labels)])
+
+        return scipy.stats.percentileofscore(Scores, siOrig)
+
+
+def getParentClusters(clLabels):
+    """
+    Get a list of the main spatially-separated clusters. Do not include any child clusters.
+    inputs:
+    1. Cluster labels
+    Return:
+    1. List of main clusters
+    """
+    # Make a list of big clusters with no children
+    mainClusters = []
+
+    for Idx, lvl in enumerate(clLabels[::-1][1:]):                      # Iterate through clusters from top down
+        newClust = [CLST not in clLabels[::-1][Idx] for CLST in lvl]    # Get indices of new clusters
+        if sum(newClust) == 1:                                          # Select if only 1 is added to next level 
+            mainClusters.append(lvl[np.where(newClust)[0][0]])          # (2 implies a cluster has been split into children)
+        else:
+            pass
+    
+    return mainClusters
+
+
+def separateParents(lD, parents, cM, clTree, actM, spatialDims, nData = 100, \
+                        nDots = 1e4, TH = 95, norm = True):
+    """
+    Take an array with cluster labels and splits them into significantly separated child clusters
+    Uses the 'testClusterChildren' function
+    Input:
+    1. linkage data
+    2. Parent array (N x N): column for cluster X has other clusters (from 1 to N) that X overlaps with (from mainClustOverlap)  
+    Return:
+    1. List of separated clusters (parents +/- children if separated) 
+    """
+
+    # get spatially separated parent clusters: columns with only 1 non-nan entry
+    _, nodes = scipy.cluster.hierarchy.to_tree(lD, rd = True) 
+    separatedParents = parents[0, np.sum(~np.isnan(parents), axis = 0) == 1]
+
+    # Get a list of all significantly clustered children/parents
+    sigClusters = [testClusterChildren(parent, cM, clTree, nodes, actM, Dim = spatialDims, \
+                                       nData = 100, nDots = 1e4, TH = TH, norm = True)[0] \
+                                        for parent in separatedParents]
+
+    return [int(S) for clust in sigClusters for S in clust]
+
+
+def parentClustOverlap(clusterList, rowData, actM, spatialDims, TH = 90, nDots = 1e4, norm = False):
+    """
+    Takes a list of clusters (length N) and checks for overlaps between any 2 clusters.
+    Returns:
+    1. Array (N x N). Where each column for cluster X lists the other clusters (from 1 to N) that X overlaps with  
+    """
+
+
+    mainClustArr = np.full((len(clusterList), len(clusterList)), np.nan)    # N x N Array to store results                                                     
+
+    mainClustArr[0][0] = clusterList[0]                                     # Set first main cluster
+
+    for Idx, cluster in enumerate(clusterList[1:]):                         # Iterate from 2nd cluster
+
+        for cIdx, comparisonCluster in enumerate(clusterList[:Idx + 1]):    # Perform comparison up to current cluster
+
+            sig = comp2clust((clusterList[Idx + 1], comparisonCluster), rowData, \
+                        actM, Dim = spatialDims, nDots = nDots, norm = norm)          # Check for significance
+            if sig < TH:                                                    # If not separate, cluster is joined
+                nanId = np.where(np.isnan(mainClustArr[:, cIdx]))[0][0]     # Append cluster to column of any joined cluster
+                mainClustArr[nanId, cIdx] = cluster
+        
+        mainClustArr[0, Idx + 1] = cluster
+    
+    return mainClustArr
+
+
+def sortOverlappingParents(parentClustArr, cM, clTree, actM, rowData, nodes, spatialDims, nDots = 1e3, nData = 100):
+    """
+    Get all overlapping parent clusters. Split these into separated children. 
+    Non-overlapping separated children -> final cluster
+    Overlapping separated children -> join together -> final cluster
+    """
+    parentChildDict = {}                # Store parent / child groups here
+    finalClust = []                     # Store final clusters here
+
+    overlaps = parentClustArr[:, np.sum(~np.isnan(parentClustArr), axis = 0) > 1]   # Get overlapping parents
+    overlaps = resortClustArray(overlaps) 
+
+
+    for Idx, parent1 in enumerate(overlaps[0, :]):
+        
+        # Get list of significant children for the 1st parent
+        if parent1 not in parentChildDict.keys():
+            sigChildren1 = testClusterChildren(parent1, cM, clTree, \
+                                    nodes, actM, Dim = spatialDims, nDots = nDots, nData = nData)[0]
+            parentChildDict[parent1] = sigChildren1
+        else: 
+            sigChildren1 = parentChildDict[parent1]
+
+        for parent2 in overlaps[1:, Idx]:                                       # Loop through overlapping parents
+
+            if np.isnan(parent2):
+                pass
+
+            else:
+                
+                # Get list of significant children for the 2nd parent
+                if parent2 not in parentChildDict.keys():
+                    sigChildren2 = testClusterChildren(parent2, cM, clTree, \
+                                        nodes, actM, Dim = spatialDims, nDots = nDots, nData = nData)[0]
+                    parentChildDict[parent2] = sigChildren2
+                else:
+                    sigChildren2 = parentChildDict[parent2]
+
+                
+                # check for any overlaps between the children of parent 1 and the children of parent 2
+                childOverlapArray = parentClustOverlap(sigChildren1.tolist() + sigChildren2.tolist(), rowData, \
+                                                        actM, spatialDims, nDots = nDots)
+
+
+                # 1st add columns with only 1 entry to the final cluster
+                [finalClust.append([int(X)]) for X in childOverlapArray[0, np.sum(~np.isnan(childOverlapArray), axis = 0) == 1].tolist()]
+
+                # 2nd, re-sort the columns with >1 entry so that every entry is in only 1 column
+                childOverlapArray = resortClustArray(childOverlapArray)
+
+                # Finally, convert each column of the overlaps into a list, and append this list to the final cluster
+                [finalClust.append(col[~np.isnan(col)].astype(int).tolist()) for col in childOverlapArray.T]
+                
+    return merge_overlapping_lists(finalClust)
+
+
 
 
 
@@ -1933,6 +2128,90 @@ def getLabelLocation(LABEL, parentTree, clustList=False):
                         enumerate(parentTree) if len(np.where(R==LABEL)[0])>0][0]
     return LOC
 
+
+def resortClustArray(cArray, Trim = True):
+    """
+    This re-sorts an array of clusters, where each column contain overlapping cluster numbers, so that all overlaps are contained in the same columns
+    """
+    # First select columns with overlapping clusters
+    cArray = cArray[:, np.sum(~np.isnan(cArray), axis = 0) > 1]
+
+    for Idx in np.arange(cArray.shape[1]):              # Loop over parents
+
+        overlapCols = []                                # Save columns with overlapping clusters here
+
+        for CL in cArray[:, Idx]:                       # Loop over connected clusters
+            cols = np.where(cArray == CL)[1]            # Get other columns containing the cluster
+            #print(CL, cols)
+            cols = cols[cols != Idx]                    # Remove the current column
+            overlapCols = overlapCols + cols.tolist()   # append to column list
+
+        uVals = np.unique(np.concatenate([cArray[:, ID] for ID in np.unique(overlapCols + [Idx])]))
+        uVals = uVals[~np.isnan(uVals)]                 # Get all unique and non-nan clusters from every column
+
+        cArray[:len(uVals), Idx] = uVals                # Re-populate the column with all connected clusters 
+
+        for col in overlapCols:
+            cArray[:, col] = np.nan                     # Set combined columns = nan
+    
+    cArray = cArray[:, np.sum(~np.isnan(cArray), axis = 0) > 1]     # Trim final array to just columns with connected clusters
+
+    return cArray
+
+
+def removeSingleOverlaps(cArray, delNan = False):
+    """
+    Replaces any single clusters that are in overlap columns with nan.
+    Optional: delete nan columns
+    """
+    for Idx, X in enumerate(cArray[0, :]):
+        
+        # Select values that are single and in overlapping column
+        if (np.sum(~np.isnan(cArray[:, Idx])) == 1) and \
+            (X in resortClustArray(cArray, Trim = False).flatten()):    
+                    cArray[0, Idx] = np.nan
+    
+    # Delete Nan columns
+    if delNan:
+        mask = ~np.all(np.isnan(cArray), axis=0)
+        cArray = cArray[:, mask]
+    
+    return cArray
+
+
+
+
+def merge_overlapping_lists(list_of_lists):
+    """
+    List of lists with entries. Joins any lists with the same entries.
+    """
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(a, b):
+        parent[find(a)] = find(b)
+
+    # Union any elements that appear together in a list
+    for lst in list_of_lists:
+        if not lst:
+            continue
+        first = lst[0]
+        for x in lst[1:]:
+            union(first, x)
+
+    # Group values by root parent
+    groups = defaultdict(set)
+    for lst in list_of_lists:
+        for x in lst:
+            groups[find(x)].add(x)
+
+    # Convert sets to sorted lists
+    return [sorted(list(g)) for g in groups.values()]
 
 #######################################################################################################
 #    7 -  Gaussian mixture models

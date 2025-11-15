@@ -2,7 +2,7 @@
 Class for synaptic clustering analysis
 """
 from scripts import synFunc as sF
-import  numpy as np, pickle as pkl
+import  numpy as np, pickle as pkl, scipy
 import scipy.cluster.hierarchy as sch, scipy.spatial.distance as ssd
 
 
@@ -147,26 +147,68 @@ class synClust:
         del threshRec
 
 
-    def getClusterSignificance(self, normaliseHms, Threshold, labelText = True):
+
+    def getClusterSignificance(self, Threshold, normalise = False, labelText = True, nDots = 1e3, \
+                               nData = 1e3, plotFilt = (2, 2), upSample = 5):
         """
-        Search through tree and identify spatially separated clusters.
+        Search through tree and identify spatially separated clusters:
+        1. Get list of parent clusters and overlaps
+
         Inputs:
         1. normaliseHm: Bool. Normalise heatmaps during comparison? (False produces more clusters generally)
         2. Threshold (float). Significance threshold for Hm comparison.
         """
 
-        self.sigClusters, self.clTree, self.clLabels = sF.testWholeTree(self.lD, self.cM, \
-                                        self.rowData, self.actM, norm = normaliseHms, \
-                                        Dim = self.spatialDims, Thresh = Threshold)
-        
-        print('\n Detected significant clusters are: {}'.format(self.sigClusters))
+        # Get hierarchy nodes and lists of all clusters
+        clLabels, clTree = sF.clustInfo(lD = self.lD, cM = self.cM, rowData = self.rowData) 
 
-        print('\n Now plotting mean heatmaps of significant clusters')
+        # Get a list of parent cluster and identify any significant overlaps
+        print("\n\n*** Getting parents clusters ***\n\n")
+        parentClusters = sF.getParentClusters(clLabels)                     
+        parentClustArr = sF.parentClustOverlap(parentClusters, self.rowData, self.actM, \
+                                               self.spatialDims, norm = normalise, TH = Threshold,\
+                                                nDots = nDots)
+        self.parentClustArr = sF.removeSingleOverlaps(parentClustArr)
+
+        # Get significant children from isolated parent clusters
+        print("\n\n*** Getting significant children from isolated parents ***\n\n")
+        self.sigClusters1 = sF.separateParents(self.lD, self.parentClustArr, self.cM, \
+                                   clTree, self.actM, self.spatialDims, nDots = nDots, nData = nData,\
+                                    norm = normalise, TH = Threshold)
         
-        sF.plotMeanEnsHm(self.actM, self.rowData, labelText = labelText, Dim = self.spatialDims,\
-                 Save = 'norm' + str(normaliseHms) + '_Labels_thresh' + str(Threshold) + '_', \
-                 clusterList = self.clLabels, clusterLabels=[int(tCl) for tCl in self.sigClusters], \
-                    UPSAMPLE = 5)
+        # Get overlapping parents -> sort into significant and overlapping children
+        print("\n\n*** Sorting overlapping parents into significant children ***\n\n")
+        _, nodes = scipy.cluster.hierarchy.to_tree(self.lD, rd = True) 
+        self.sigClusters2 = sF.sortOverlappingParents(self.parentClustArr, self.cM, clTree, \
+                                    self.actM, self.rowData, nodes, self.spatialDims, nDots = nDots,\
+                                    nData = nData)
+        
+        # Get the final list of clusters (Joined clusters listed: [1, 2, [3, 4], 5]) where [3,4] are joined
+        self.finalClusters = self.sigClusters1 + [C[0] for C in self.sigClusters2 if len(C) == 1] \
+                                    + [C for C in self.sigClusters2 if len(C) > 1]
+        
+        # Plot heatmaps of all significant clusters
+        sF.plotMeanEnsHm(self.actM, self.rowData, Dim = self.spatialDims, \
+                        plotClusters = self.finalClusters, clusterLabels = clLabels, \
+                        labelText = labelText, filt = plotFilt, UPSAMPLE = upSample,\
+                        Save = 'norm' + str(normalise) + '_Labels_thresh' + str(Threshold) + '_')
+
+
+
+
+
+        #self.sigClusters, self.clTree, self.clLabels = sF.testWholeTree(self.lD, self.cM, \
+        #                                self.rowData, self.actM, norm = normaliseHms, \
+        #                                Dim = self.spatialDims, Thresh = Threshold)
+        
+        #print('\n Detected significant clusters are: {}'.format(self.sigClusters))
+
+        #print('\n Now plotting mean heatmaps of significant clusters')
+        
+        #sF.plotMeanEnsHm(self.actM, self.rowData, labelText = labelText, Dim = self.spatialDims,\
+        #         Save = 'norm' + str(normaliseHms) + '_Labels_thresh' + str(Threshold) + '_', \
+        #         clusterLabels = self.clLabels, plotClusters = [int(tCl) for tCl in self.sigClusters], \
+        #            UPSAMPLE = 5)
 
 
     #def getClustScore(self, Score='CI'):
