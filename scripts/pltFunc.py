@@ -38,13 +38,13 @@ def medCutoff(medStack, Bgr, cRange, save = False):
         fig.savefig(save['fname'],dpi=save['dpi'])
 
 
-def plotAveTrace(Stack, medStack, cut=None,save=False,LW=0.05):
+def plotAveTrace(Stack, medStack, cut = None, save = False, LW = 0.05, size = (6, 1.2)):
     """
     Plot spatially averaged trace over time.
     Plot across all pixels, and across median-filtered pixels
     """
     if cut:
-        fig,ax=Fig(3,1,6,2.2)
+        fig, ax = Fig(3, 1, size[0], size[1])
         XpN,YpN = np.where(medStack < cut)
         Xp,Yp = np.where(medStack > cut)
         ax[1].plot(np.mean(Stack[:, Xp, Yp], axis = 1), color = 'k', lw = LW)
@@ -53,16 +53,19 @@ def plotAveTrace(Stack, medStack, cut=None,save=False,LW=0.05):
         [A.tick_params(axis='both',which='major',labelsize=8) for A in ax]
         [A.set_xticks([]) for A in ax[:2]]
         ax[0].set_title('all pixels',fontsize=7),ax[1].set_title('cell',fontsize=7),ax[2].set_title('non-cell',fontsize=7)
+
     else:
-        fig,ax=Fig(1,1,6,1.2)
-        ax.plot(np.mean(Stack.reshape(Stack.shape[0],Stack.shape[1]*Stack.shape[2]),axis=1),lw=LW,color='k')
-        ax.tick_params(axis='both',which='major',labelsize=8)
+        fig , ax = Fig(1, 1, size[0], size[1])
+        ax.plot(np.mean(Stack.reshape(Stack.shape[0], Stack.shape[1] * Stack.shape[2]), axis = 1), lw = LW, color = 'k')
+        ax.tick_params(axis = 'both', which = 'major', labelsize = 8)
+
     fig.tight_layout()
+
     if save: 
-        fig.savefig(save['fname'],dpi=save['dpi'])
+        fig.savefig(save['fname'], dpi = save['dpi'])
 
 
-def plotPixResults(d, Info, save = None):
+def plotPixResults(d, Info, save = None, size = (8, 3.5)):
     """
     Plot raw, normalised, mean and std time series 
     for the 10 brightest pixels (or 10 mid-brightest pixels).
@@ -71,7 +74,7 @@ def plotPixResults(d, Info, save = None):
     1. data with: (TxYxX) gauss filtered stack, rolling mean, and rolling std stack
     2. Info with mean image, std
     """
-    fig, ax = Fig(4, 5, 8, 3.5)
+    fig, ax = Fig(4, 5, size[0], size[1])
 
     # Define arrays and parameters to use
     normS = (d['filtTiff'] - d['rMean'])/d['rStd']
