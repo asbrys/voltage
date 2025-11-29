@@ -188,6 +188,7 @@ class synClust:
                                     + [C for C in self.sigClusters2 if len(C) > 1]
         
         # Plot heatmaps of all significant clusters
+        print("\nplotting all significant clusters")
         sF.plotMeanEnsHm(self.actM, self.rowData, Dim = self.spatialDims, \
                         plotClusters = self.finalClusters, clusterLabels = clLabels, \
                         labelText = labelText, filt = plotFilt, UPSAMPLE = upSample,\
