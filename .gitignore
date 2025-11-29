@@ -2,7 +2,8 @@ scripts/__pycache__/
 data/*.pkl
 background/*.png
 activityMaps/*.mp4
-scripts/e*.py
+scripts/eFunctions.py
+scripts/ePltFunc.py
 scripts/clustSigFunc.py
 synFigs/*.mp4
 synFigs/*.png
